@@ -1,5 +1,3 @@
-const axios = require('axios');
-
 async function fetchShopifyCustomers() {
     const graphqlURL = `${process.env.STORE_URL}/admin/api/2024-01/graphql.json`;
     const graphqlQuery = {
