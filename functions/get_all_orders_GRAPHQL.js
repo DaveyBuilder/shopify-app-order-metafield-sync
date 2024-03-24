@@ -19,13 +19,13 @@ async function getAllOrdersGRAPHQL(days = 1) {
     const graphqlQuery = {
       query: `
         {
-          orders(first: 10, query: "created_at:>${formattedStartDate} AND created_at:<${formattedEndDate}") {
+          orders(first: 250, query: "created_at:>${formattedStartDate} AND created_at:<${formattedEndDate}") {
             edges {
               node {
                 id
                 createdAt
                 totalPrice
-                lineItems(first: 10) {
+                lineItems(first: 250) {
                   edges {
                     node {
                       id
@@ -41,6 +41,16 @@ async function getAllOrdersGRAPHQL(days = 1) {
                 customer {
                   id
                   email
+                  metafields(first: 5) {
+                    edges {
+                      node {
+                        id
+                        namespace
+                        key
+                        value
+                      }
+                    }
+                  }
                 }
               }
             }

@@ -15,7 +15,7 @@ const fetchShopifyCustomers = require('./functions/fetchShopifyCustomers');
 
 async function main() {
 
-  const daysToFetch = 0;
+  const daysToFetch = 2;
 
   let allOrders;
 
@@ -38,12 +38,57 @@ async function main() {
   try {
     allOrders = await getAllOrdersGRAPHQL(daysToFetch);
     console.log("Successfully fetched orders within the last " + daysToFetch + " day(s):");
-    console.log(JSON.stringify(allOrders, null, 2));
+    //console.log(JSON.stringify(allOrders, null, 2));
   } catch (error) {
     console.error(`Error fetching all orders. Unable to continue. Error details: ${error.message}`);
     return;
   }
 
+  for (const order of allOrders) {
+    let existingStylists;
+    let existingClients;
+    // Get the existing stylists/clients for this customer
+    for (const metafield of order.node.customer.metafields.edges) {
+      if(metafield.node.key === "stylists") {
+        try {
+          existingStylists = JSON.parse(metafield.node.value);
+        } catch (error) {
+          console.error("Failed to parse existing stylists:", error);
+          existingStylists = []; // Fallback to an empty array or handle as needed
+        }
+      }
+      if(metafield.node.key === "clients") {
+        try {
+          existingClients = JSON.parse(metafield.node.value);
+        } catch (error) {
+          console.error("Failed to parse existing clients:", error);
+          existingClients = []; // Fallback to an empty array or handle as needed
+        }
+      }
+    }
+    console.log("Existing stylists: " + existingStylists);
+    console.log("Existing clients: " + existingClients);
+
+    // Check if existingStylists and existingClients are arrays
+    if (Array.isArray(existingStylists)) {
+      console.log("Existing stylists is an array.");
+    } else {
+      console.log("Existing stylists is not an array.");
+    }
+
+    if (Array.isArray(existingClients)) {
+      console.log("Existing clients is an array.");
+    } else {
+      console.log("Existing clients is not an array.");
+    }
+
+    // Now go over the line items and check whether the stylist/client is already in the list
+    for (const lineItem of order.node.lineItems.edges) {
+      console.log("Custom attributes:")
+      console.log(lineItem.node.customAttributes);
+    }
+
+  }
   
 
 }
