@@ -1,3 +1,5 @@
+// FILE NOT BEING USED - USED GRAPHQL API INSTEAD
+
 const apiCall = require('./api_call');
 
 async function getAllOrdersREST(days = 1) {

@@ -10,16 +10,10 @@ const PORT = process.env.PORT;
 app.use(express.json());
 
 const getAllOrdersGRAPHQL = require('./functions/get_all_orders_GRAPHQL');
+const updateCustomerMetafields = require('./functions/update_customer_metafields');
 //const getAllOrdersREST = require('./functions/get_all_orders_REST');
-const fetchShopifyCustomers = require('./functions/fetchShopifyCustomers');
 
-async function main() {
-
-  const daysToFetch = 2;
-
-  let allOrders;
-
-  // Fetch all orders using REST API
+// Fetch all orders using REST API
   // try {
   //   allOrders = await getAllOrdersREST(daysToFetch);
   //   console.log("Successfully fetched orders within the last " + daysToFetch + " day(s):");
@@ -34,6 +28,12 @@ async function main() {
   //   console.log("Line items: " + order.line_items);
   // }
 
+async function main() {
+
+  const daysToFetch = 3;
+
+  let allOrders;
+
   // Fetch all orders using GraphQL API
   try {
     allOrders = await getAllOrdersGRAPHQL(daysToFetch);
@@ -44,52 +44,115 @@ async function main() {
     return;
   }
 
+  if (allOrders.length === 0) {
+    console.log("No orders to process. Exiting.");
+    return;
+  }
+
   for (const order of allOrders) {
+    //console.log(order);
     let existingStylists;
     let existingClients;
+    let stylistsMetafieldNode;
+    let clientsMetafieldNode;
     // Get the existing stylists/clients for this customer
     for (const metafield of order.node.customer.metafields.edges) {
       if(metafield.node.key === "stylists") {
+        //console.log(metafield.node)
+        stylistsMetafieldNode = metafield.node
         try {
           existingStylists = JSON.parse(metafield.node.value);
         } catch (error) {
           console.error("Failed to parse existing stylists:", error);
-          existingStylists = []; // Fallback to an empty array or handle as needed
+          existingStylists = []; // Fallback to an empty array (could be a new customer)
         }
       }
       if(metafield.node.key === "clients") {
+        //console.log(metafield.node)
+        clientsMetafieldNode = metafield.node
         try {
           existingClients = JSON.parse(metafield.node.value);
         } catch (error) {
           console.error("Failed to parse existing clients:", error);
-          existingClients = []; // Fallback to an empty array or handle as needed
+          existingClients = []; // Fallback to an empty array (could be a new customer)
         }
       }
     }
-    console.log("Existing stylists: " + existingStylists);
-    console.log("Existing clients: " + existingClients);
+    //console.log("Existing stylists: " + existingStylists);
+    //console.log("Existing clients: " + existingClients);
 
     // Check if existingStylists and existingClients are arrays
-    if (Array.isArray(existingStylists)) {
-      console.log("Existing stylists is an array.");
-    } else {
-      console.log("Existing stylists is not an array.");
+    if (!Array.isArray(existingStylists)) {
+      console.error("Existing stylists is not an array. Skipping order.");
+      continue; // Skip to the next order
     }
-
-    if (Array.isArray(existingClients)) {
-      console.log("Existing clients is an array.");
-    } else {
-      console.log("Existing clients is not an array.");
+    if (!Array.isArray(existingClients)) {
+      console.error("Existing clients is not an array. Skipping order.");
+      continue; // Skip to the next order
     }
 
     // Now go over the line items and check whether the stylist/client is already in the list
+    let stylistsToAdd = [];
+    let clientsToAdd = [];
     for (const lineItem of order.node.lineItems.edges) {
-      console.log("Custom attributes:")
-      console.log(lineItem.node.customAttributes);
+      //console.log("Custom attributes:");
+      //console.log(lineItem.node.customAttributes);
+    
+      // Iterate through each custom attribute to find 'Hair Stylist Name' and 'Client Name'
+      for (const attribute of lineItem.node.customAttributes) {
+        if (attribute.key === 'Hair Stylist Name') {
+          // Check if the stylist's name exists in the existingStylists array
+          if (existingStylists.includes(attribute.value)) {
+            //console.log(`Stylist ${attribute.value} exists in the existing stylists.`);
+          } else {
+            stylistsToAdd.push(attribute.value);
+          }
+        } else if (attribute.key === 'Client Name') {
+          // Check if the client name exists in the existingClients array
+          if (existingClients.includes(attribute.value)) {
+            //console.log(`Client name ${attribute.value} exists in the existing clients.`);
+          } else {
+            clientsToAdd.push(attribute.value);
+          }
+        }
+      }
+    }
+
+    //console.log("Stylists to add: " + stylistsToAdd);
+    //console.log("Clients to add: " + clientsToAdd);
+
+    // So we have existingStylists and existingClients
+    // We also have stylistsToAdd and clientsToAdd
+    // Also stylistsMetafieldNode and clientsMetafieldNode
+    const customerID = order.node.customer.id;
+    //console.log("Customer ID: " + customerID);
+
+    let newStylistsMetafieldValue;
+    if (stylistsToAdd.length > 0) {
+      newStylistsMetafieldValue = existingStylists.concat(stylistsToAdd);
+    }
+
+    let newClientsMetafieldValue;
+    if (clientsToAdd.length > 0) {
+      newClientsMetafieldValue = existingClients.concat(clientsToAdd);
+    }
+
+    // console.log("New stylists metafield value: " + newStylistsMetafieldValue);
+    // console.log("New clients metafield value: " + newClientsMetafieldValue);
+    // console.log("Stylists metafield node: " + stylistsMetafieldNode);
+    // console.log("Clients metafield node: " + clientsMetafieldNode);
+
+    // Now if there are stylists or clients to add, then update the customer metafield/s
+    if (newStylistsMetafieldValue || newClientsMetafieldValue) {
+      //console.log(`Updating customer metafields for customer ${customerID}...`);
+      try {
+        await updateCustomerMetafields(customerID, newStylistsMetafieldValue, stylistsMetafieldNode, newClientsMetafieldValue, clientsMetafieldNode);
+      } catch (error) {
+        console.error("Failed to update customer metafields:", error);
+      }
     }
 
   }
-  
 
 }
 
