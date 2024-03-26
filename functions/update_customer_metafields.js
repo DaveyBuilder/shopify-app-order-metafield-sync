@@ -1,6 +1,6 @@
 const apiCall = require('./api_call');
 
-async function updateCustomerMetafields(customerID, newStylistsMetafieldValue, stylistsMetafieldNode, newClientsMetafieldValue, clientsMetafieldNode) {
+async function updateCustomerMetafields(customerID, customerEmail, newStylistsMetafieldValue, stylistsMetafieldNode, newClientsMetafieldValue, clientsMetafieldNode) {
     
     const metafieldsToUpdate = [];
     if (newStylistsMetafieldValue) {
@@ -14,8 +14,6 @@ async function updateCustomerMetafields(customerID, newStylistsMetafieldValue, s
     }
 
     if (metafieldsToUpdate.length > 0) {
-
-        console.log("Updating metafields for customer", customerID, ":", metafieldsToUpdate);
 
         // Construct the GraphQL mutation
         const mutation = `
@@ -41,10 +39,13 @@ async function updateCustomerMetafields(customerID, newStylistsMetafieldValue, s
                     namespace: metafield.namespace,
                     key: metafield.key,
                     value: metafield.value,
-                    type: "json_string"
+                    type: "json"
                 }))
             }
         };
+
+        console.log(`Updating metafields for ${customerEmail}: `);
+        console.log(JSON.stringify(variables, null, 2));
 
         // Prepare the body for apiCall
         const body = {
@@ -56,10 +57,14 @@ async function updateCustomerMetafields(customerID, newStylistsMetafieldValue, s
 
         // Make the API call
         try {
-            //const response = await apiCall(url, body);
-            console.log("Update response:", response);
+            const response = await apiCall(url, "POST", body);
+            if (response.data.customerUpdate.userErrors.length > 0) {
+                throw new Error(`API response object indicates error when updating customer metafields: ${JSON.stringify(response.data.customerUpdate.userErrors)}`);
+            } else {
+                console.log(`Successfully updated customer metafields for ${customerEmail}`);
+            }
         } catch (error) {
-            console.error("Error updating customer metafields:", error);
+            throw error;
         }
 
     }

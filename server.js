@@ -1,5 +1,6 @@
 const express = require('express');
 const app = express();
+const cron = require('node-cron');
 
 if (process.env.NODE_ENV !== 'production') {
   require('dotenv').config();
@@ -12,25 +13,11 @@ app.use(express.json());
 const getAllOrdersGRAPHQL = require('./functions/get_all_orders_GRAPHQL');
 const updateCustomerMetafields = require('./functions/update_customer_metafields');
 //const getAllOrdersREST = require('./functions/get_all_orders_REST');
-
-// Fetch all orders using REST API
-  // try {
-  //   allOrders = await getAllOrdersREST(daysToFetch);
-  //   console.log("Successfully fetched orders within the last " + daysToFetch + " day(s):");
-  // } catch (error) {
-  //   console.error(`Error fetching all orders. Unable to continue. Error details: ${error.message}`);
-  //   return;
-  // }
-  //console.log(JSON.stringify(allOrders, null, 2));
-  // for (const order of allOrders) {
-  //   console.log("Order ID: " + order.id);
-  //   console.log("Customer: " + order.customer);
-  //   console.log("Line items: " + order.line_items);
-  // }
+//const testOrders = require('./functions/test_order_data');
 
 async function main() {
 
-  const daysToFetch = 3;
+  const daysToFetch = 100;
 
   let allOrders;
 
@@ -38,11 +25,14 @@ async function main() {
   try {
     allOrders = await getAllOrdersGRAPHQL(daysToFetch);
     console.log("Successfully fetched orders within the last " + daysToFetch + " day(s):");
-    //console.log(JSON.stringify(allOrders, null, 2));
+    // console.log(JSON.stringify(allOrders, null, 2));
+    // return;
   } catch (error) {
     console.error(`Error fetching all orders. Unable to continue. Error details: ${error.message}`);
     return;
   }
+
+  //allOrders = testOrders;
 
   if (allOrders.length === 0) {
     console.log("No orders to process. Exiting.");
@@ -50,15 +40,17 @@ async function main() {
   }
 
   for (const order of allOrders) {
-    //console.log(order);
+    console.log("NEXT ORDER");
+    //console.log(JSON.stringify(order, null, 2));
     let existingStylists;
     let existingClients;
     let stylistsMetafieldNode;
     let clientsMetafieldNode;
     // Get the existing stylists/clients for this customer
     for (const metafield of order.node.customer.metafields.edges) {
+      
       if(metafield.node.key === "stylists") {
-        //console.log(metafield.node)
+        console.log(metafield.node)
         stylistsMetafieldNode = metafield.node
         try {
           existingStylists = JSON.parse(metafield.node.value);
@@ -68,7 +60,7 @@ async function main() {
         }
       }
       if(metafield.node.key === "clients") {
-        //console.log(metafield.node)
+        console.log(metafield.node)
         clientsMetafieldNode = metafield.node
         try {
           existingClients = JSON.parse(metafield.node.value);
@@ -78,8 +70,6 @@ async function main() {
         }
       }
     }
-    //console.log("Existing stylists: " + existingStylists);
-    //console.log("Existing clients: " + existingClients);
 
     // Check if existingStylists and existingClients are arrays
     if (!Array.isArray(existingStylists)) {
@@ -95,8 +85,8 @@ async function main() {
     let stylistsToAdd = [];
     let clientsToAdd = [];
     for (const lineItem of order.node.lineItems.edges) {
-      //console.log("Custom attributes:");
-      //console.log(lineItem.node.customAttributes);
+      console.log("Custom attributes:");
+      console.log(lineItem.node.customAttributes);
     
       // Iterate through each custom attribute to find 'Hair Stylist Name' and 'Client Name'
       for (const attribute of lineItem.node.customAttributes) {
@@ -118,13 +108,19 @@ async function main() {
       }
     }
 
-    //console.log("Stylists to add: " + stylistsToAdd);
-    //console.log("Clients to add: " + clientsToAdd);
+    if (stylistsToAdd.length === 0 && clientsToAdd.length === 0) {
+      console.log(`No stylists or clients to add for customer ${order.node.customer.email}. Skipping order.`);
+      continue; // Skip to the next order
+    }
+
+    console.log(order.node.customer.email + " Stylists to add: " + stylistsToAdd);
+    console.log(order.node.customer.email + " Clients to add: " + clientsToAdd);
 
     // So we have existingStylists and existingClients
     // We also have stylistsToAdd and clientsToAdd
     // Also stylistsMetafieldNode and clientsMetafieldNode
     const customerID = order.node.customer.id;
+    const customerEmail = order.node.customer.email;
     //console.log("Customer ID: " + customerID);
 
     let newStylistsMetafieldValue;
@@ -144,11 +140,11 @@ async function main() {
 
     // Now if there are stylists or clients to add, then update the customer metafield/s
     if (newStylistsMetafieldValue || newClientsMetafieldValue) {
-      //console.log(`Updating customer metafields for customer ${customerID}...`);
+      console.log(`Updating customer metafields for customer ${customerID}, ${customerEmail}...`);
       try {
-        await updateCustomerMetafields(customerID, newStylistsMetafieldValue, stylistsMetafieldNode, newClientsMetafieldValue, clientsMetafieldNode);
+        await updateCustomerMetafields(customerID, customerEmail, newStylistsMetafieldValue, stylistsMetafieldNode, newClientsMetafieldValue, clientsMetafieldNode);
       } catch (error) {
-        console.error("Failed to update customer metafields:", error);
+        console.error(`Failed to update customer metafields for: ${error}`);
       }
     }
 
@@ -159,7 +155,10 @@ async function main() {
 
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
-  // Run function when the server starts
-  main();
+  // Schedule main() to run every 5 minutes
+  cron.schedule('*/5 * * * *', () => {
+    console.log('Running main() function...');
+    main();
+  });
 });
 
